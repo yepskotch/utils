@@ -345,100 +345,104 @@ def main() -> None:
         err(f"{RED}[!] Use -w / --wordlist to specify a different path{RESET}")
         sys.exit(1)
 
-    # Determine if input is a file or a literal hash string
-    tmp_path = None
+    # Determine if input is a file or a literal hash string.
+    # For a literal string, use NamedTemporaryFile as a context manager so
+    # cleanup is guaranteed without any manual os.unlink call.
     if os.path.isfile(args.input):
         hash_file = args.input
         err(f"{BLUE}[*] Using hash file: {hash_file}{RESET}")
+        _run(hash_file, args.wordlist)
     else:
-        fd, tmp_path = tempfile.mkstemp(prefix="hashcrack.")
-        with os.fdopen(fd, "w") as f:
-            f.write(args.input + "\n")
-        hash_file = tmp_path
-        err(f"{BLUE}[*] Hash string written to temp file{RESET}")
+        with tempfile.NamedTemporaryFile(
+            mode="w", prefix="hashcrack.", suffix=".txt", delete=True
+        ) as tmp:
+            tmp.write(args.input + "\n")
+            tmp.flush()
+            err(f"{BLUE}[*] Hash string written to temp file{RESET}")
+            _run(tmp.name, args.wordlist)
 
-    try:
-        # Read first non-empty line for identification
-        sample_hash = ""
-        with open(hash_file) as f:
-            for line in f:
-                stripped = line.strip()
-                if stripped:
-                    sample_hash = stripped
-                    break
 
-        if not sample_hash:
-            err(f"{RED}[!] No hash found in input{RESET}")
+def _run(hash_file: str, wordlist: str) -> None:
+    """Identify the hash and invoke hashcat. Separated so temp file cleanup
+    is fully owned by the NamedTemporaryFile context manager in main()."""
+
+    # Read first non-empty line for identification
+    sample_hash = ""
+    with open(hash_file) as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped:
+                sample_hash = stripped
+                break
+
+    if not sample_hash:
+        err(f"{RED}[!] No hash found in input{RESET}")
+        sys.exit(1)
+
+    # Identify hash type
+    result = identify_hash(sample_hash)
+    kind = result[0]
+
+    if kind == "unknown":
+        err(f"{RED}[!] Could not identify hash type{RESET}")
+        err(f"{YELLOW}[*] Sample: {sample_hash}{RESET}")
+        err(f"{YELLOW}[*] Specify the mode manually: hashcat -m <mode> {hash_file} {wordlist}{RESET}")
+        sys.exit(1)
+
+    if kind == "ambiguous":
+        candidates = result[1]  # list of (mode, name)
+        err("")
+        err(f"{YELLOW}[*] Ambiguous hash — multiple possible types:{RESET}")
+        err("")
+        for idx, (mode, name) in enumerate(candidates, start=1):
+            err(f"  {YELLOW}[{idx}]{RESET} {mode:<6}  {name}")
+        err("")
+        err(f"  {YELLOW}[q]{RESET} Quit")
+        err("")
+
+        try:
+            choice_raw = input("  Select type: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            err(f"\n{YELLOW}[*] Aborted.{RESET}")
+            sys.exit(0)
+
+        if choice_raw.lower() == "q":
+            err(f"{YELLOW}[*] Aborted.{RESET}")
+            sys.exit(0)
+
+        if not choice_raw.isdigit():
+            err(f"{RED}[!] Invalid selection.{RESET}")
             sys.exit(1)
 
-        # Identify hash type
-        result = identify_hash(sample_hash)
-        kind = result[0]
-
-        if kind == "unknown":
-            err(f"{RED}[!] Could not identify hash type{RESET}")
-            err(f"{YELLOW}[*] Sample: {sample_hash}{RESET}")
-            err(f"{YELLOW}[*] Specify the mode manually: hashcat -m <mode> {hash_file} {args.wordlist}{RESET}")
+        choice = int(choice_raw)
+        if choice < 1 or choice > len(candidates):
+            err(f"{RED}[!] Invalid selection.{RESET}")
             sys.exit(1)
 
-        if kind == "ambiguous":
-            candidates = result[1]  # list of (mode, name)
-            err("")
-            err(f"{YELLOW}[*] Ambiguous hash — multiple possible types:{RESET}")
-            err("")
-            for idx, (mode, name) in enumerate(candidates, start=1):
-                err(f"  {YELLOW}[{idx}]{RESET} {mode:<6}  {name}")
-            err("")
-            err(f"  {YELLOW}[q]{RESET} Quit")
-            err("")
+        hashcat_mode, hash_name = candidates[choice - 1]
+    else:
+        # unambiguous: ("unambiguous", mode_str, name_str)
+        hashcat_mode = result[1]
+        hash_name = result[2]
 
-            try:
-                choice_raw = input("  Select type: ").strip()
-            except (EOFError, KeyboardInterrupt):
-                err(f"\n{YELLOW}[*] Aborted.{RESET}")
-                sys.exit(0)
+    # Run hashcat
+    err("")
+    err(f"{GREEN}[+] Identified:  {hash_name} (mode {hashcat_mode}){RESET}")
+    err(f"{BLUE}[*] Wordlist:    {wordlist}{RESET}")
+    err(f"{BLUE}[*] Command:     hashcat -m {hashcat_mode} {hash_file} {wordlist}{RESET}")
+    err("")
 
-            if choice_raw.lower() == "q":
-                err(f"{YELLOW}[*] Aborted.{RESET}")
-                sys.exit(0)
+    hc = subprocess.run(["hashcat", "-m", str(hashcat_mode), hash_file, wordlist])
 
-            if not choice_raw.isdigit():
-                err(f"{RED}[!] Invalid selection.{RESET}")
-                sys.exit(1)
+    err("")
+    if hc.returncode == 0:
+        err(f"{GREEN}[+] hashcat finished successfully{RESET}")
+    elif hc.returncode == 1:
+        err(f"{RED}[!] hashcat encountered a fatal error{RESET}")
+    else:
+        err(f"{YELLOW}[*] hashcat exited with code {hc.returncode}{RESET}")
 
-            choice = int(choice_raw)
-            if choice < 1 or choice > len(candidates):
-                err(f"{RED}[!] Invalid selection.{RESET}")
-                sys.exit(1)
-
-            hashcat_mode, hash_name = candidates[choice - 1]
-        else:
-            # unambiguous: ("unambiguous", mode_str, name_str)
-            hashcat_mode = result[1]
-            hash_name = result[2]
-
-        # Run hashcat
-        err("")
-        err(f"{GREEN}[+] Identified:  {hash_name} (mode {hashcat_mode}){RESET}")
-        err(f"{BLUE}[*] Wordlist:    {args.wordlist}{RESET}")
-        err(f"{BLUE}[*] Command:     hashcat -m {hashcat_mode} {hash_file} {args.wordlist}{RESET}")
-        err("")
-
-        hc = subprocess.run(["hashcat", "-m", str(hashcat_mode), hash_file, args.wordlist])
-
-        err("")
-        if hc.returncode == 0:
-            err(f"{GREEN}[+] hashcat finished successfully{RESET}")
-        elif hc.returncode == 1:
-            err(f"{RED}[!] hashcat encountered a fatal error{RESET}")
-        else:
-            err(f"{YELLOW}[*] hashcat exited with code {hc.returncode}{RESET}")
-
-        sys.exit(hc.returncode)
-
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+    sys.exit(hc.returncode)
 
 
 if __name__ == "__main__":
