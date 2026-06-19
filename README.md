@@ -6,6 +6,14 @@ Personal offensive utility tools. Provided as-is with no guarantees — review b
 
 Requires [pipx](https://pipx.pypa.io/) and Python 3.8+.
 
+From GitHub:
+
+```bash
+pipx install git+https://github.com/yepskotch/utils.git
+```
+
+From a local clone:
+
 ```bash
 pipx install .
 ```
