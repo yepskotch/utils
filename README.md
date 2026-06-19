@@ -1,71 +1,92 @@
 # utils
 
-Personal offensive utility scripts. Provided as-is with no guarantees — review before use in any environment you care about.
+Personal offensive utility tools. Provided as-is with no guarantees — review before use in any environment you care about.
+
+## Install
+
+Requires [pipx](https://pipx.pypa.io/) and Python 3.8+.
+
+```bash
+pipx install .
+```
+
+This installs three commands: `ft`, `hashcrack`, and `klist-pick`.
+
+To reinstall after changes:
+
+```bash
+pipx install --force .
+```
 
 ---
 
-## ft.sh
+## ft
 
 Wraps a command with `faketime` after automatically calculating the clock skew against a target host. Useful when attacking Kerberos environments where your system clock differs from the DC.
 
-**Requirements:** `ntpdate`, `faketime` (apt: `faketime`), `python3`
+**Requirements:** `ntpdate`, `faketime` (apt: `faketime`)
 
 **Usage:**
 ```
-ft.sh <host> <command> [args...]
+ft <host> <command> [args...]
 ```
 
 **Examples:**
 ```bash
-ft.sh dc.corp.local getTGT.py 'CORP.LOCAL/user:Password1'
-ft.sh 10.10.10.100 evil-winrm -i 10.10.10.100 -r CORP.LOCAL
-ft.sh dc.corp.local nxc ldap dc.corp.local -u user --use-kcache --users
+ft dc.corp.local getTGT.py 'CORP.LOCAL/user:Password1'
+ft 10.10.10.100 evil-winrm -i 10.10.10.100 -r CORP.LOCAL
+ft dc.corp.local nxc ldap dc.corp.local -u user --use-kcache --users
 ```
 
 Queries the target with `ntpdate`, extracts the offset, rounds up to the nearest whole hour, and passes it to `faketime -f`.
 
 ---
 
-## klist-pick.sh
+## klist-pick
 
-Interactive menu to select a `.ccache` file from the current directory, preview its tickets with `klist`, and export it as `KRB5CCNAME`.
+Interactive menu to select a `.ccache` file from the current directory, preview its tickets with `klist`, and print the export command to activate it.
 
-**Requirements:** `klist` (apt: `krb5-user`), `python3`
+**Requirements:** `klist` (apt: `krb5-user`)
 
 **Usage:**
 ```bash
-source klist-pick.sh
+klist-pick
 ```
 
-Must be sourced for the `export KRB5CCNAME=` to take effect in the current shell.
+Select a file and press `[p]` to print the export command, then run it in your shell:
+
+```bash
+export KRB5CCNAME="FILE:/path/to/file.ccache"
+```
 
 **Features:**
 - Lists all `.ccache` files in the current directory with their default principal
 - Shows the currently active `KRB5CCNAME` if already set
-- Previews ticket details via `klist` before committing
+- Previews ticket details via `klist` before selecting
 - Warns if the selected ticket is expired
 
 ---
 
-## hashcrack.sh
+## hashcrack
 
-Identifies a hash type and runs hashcat against it with the correct mode using the rockyou wordlist.
+Identifies a hash type and runs hashcat against it with the correct mode.
 
-**Requirements:** `hashcat`, `python3`
+**Requirements:** `hashcat`
 
 **Usage:**
 ```
-hashcrack.sh <hash_string_or_file>
+hashcrack [-w /path/to/wordlist.txt] <hash_string_or_file>
 ```
 
-Pass a literal hash string or a path to a file containing one or more hashes. The rockyou.txt path is configured via the `ROCKYOU` variable at the top of the script (default: `/usr/share/wordlists/rockyou.txt`).
+Pass a literal hash string or a path to a file containing one or more hashes. The wordlist defaults to `/usr/share/wordlists/rockyou.txt` and can be overridden with `-w`.
 
 **Examples:**
 ```bash
-hashcrack.sh 8743b52063cd84097a65d1633f5c74f5
-hashcrack.sh '$6$qdMgClgO2dQWB37F$jhexCX1SdsCAi0OZmoRVAPnWSwuP...'
-hashcrack.sh '$krb5tgs$23$*user$realm$test/spn*$...'
-hashcrack.sh hashes.txt
+hashcrack 8743b52063cd84097a65d1633f5c74f5
+hashcrack '$6$qdMgClgO2dQWB37F$jhexCX1SdsCAi0OZmoRVAPnWSwuP...'
+hashcrack '$krb5tgs$23$*user$realm$test/spn*$...'
+hashcrack hashes.txt
+hashcrack -w /opt/wordlists/rockyou.txt hashes.txt
 ```
 
 **Supported hash types (auto-detected):**
@@ -118,7 +139,6 @@ hashcrack.sh hashes.txt
 | 8300 | DNSSEC (NSEC3) |
 | 8500 | RACF |
 | 8700 | Lotus Notes/Domino 6 |
-| 8800 | scrypt |
 | 8900 | scrypt (`SCRYPT:`) |
 | 9100 | Lotus Notes/Domino 8 |
 | 9200 | Cisco-IOS `$8$` (PBKDF2-SHA256) |
