@@ -12,4 +12,5 @@ dependencies = []
 [project.scripts]
 ft = "skotch_utils.ft:main"
 hashcrack = "skotch_utils.hashcrack:main"
+hashgrab = "skotch_utils.hashgrab:main"
 klist-pick = "skotch_utils.klist_pick:main"
