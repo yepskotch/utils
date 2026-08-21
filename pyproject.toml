@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "skotch-utils"
-version = "1.0.0"
+version = "1.0.1"
 description = "Personal offensive utility scripts: faketime wrapper, hash cracker, and Kerberos ccache picker"
 requires-python = ">=3.8"
 dependencies = []
